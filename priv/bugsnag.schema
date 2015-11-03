@@ -6,7 +6,7 @@
 
 %% @doc BugSnag API key
 {mapping, "bugsnag.api_key", "bugsnag.api_key",
-[{default, "ENTER_API_KEY"},
+[{commented, "ENTER_API_KEY"},
  {datatype, string}]}.
 
 %% @doc Release state
@@ -14,3 +14,12 @@
 [{default, "development"},
  {datatype, string}]}.
 
+%% @doc Applicaiton this reports about
+{mapping, "bugsnag.app", "bugsnag.app",
+[{default, "generic_app"},
+ {datatype, string}]}.
+
+%% @doc Applicaiton this reports about
+{mapping, "bugsnag.app_version", "bugsnag.app_version",
+[{default, "0.1.0"},
+ {datatype, string}]}.
