@@ -16,10 +16,10 @@
 
 %% @doc Applicaiton this reports about
 {mapping, "bugsnag.app", "bugsnag.app",
-[{default, "generic_app"},
+[{default, "{{bugsnag_app}}"},
  {datatype, string}]}.
 
 %% @doc Applicaiton this reports about
 {mapping, "bugsnag.app_version", "bugsnag.app_version",
-[{default, "0.1.0"},
+[{default, "{{bugsnag_app_version}}"},
  {datatype, string}]}.
