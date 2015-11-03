@@ -1,0 +1,16 @@
+%% -*- erlang -*-
+%% @doc Use Error logger
+{mapping, "bugsnag.error_logger", "bugsnag.error_logger",
+ [{default, on},
+  {datatype, flag}]}.
+
+%% @doc BugSnag API key
+{mapping, "bugsnag.api_key", "bugsnag.api_key",
+[{default, "ENTER_API_KEY"},
+ {datatype, string}]}.
+
+%% @doc Release state
+{mapping, "bugsnag.release_state", "bugsnag.release_state",
+[{default, "development"},
+ {datatype, string}]}.
+
