@@ -11,7 +11,7 @@
 
 %% @doc Release state
 {mapping, "bugsnag.release_state", "bugsnag.release_state",
-[{default, "development"},
+[{default, "{{bugsnag_release_state}}"},
  {datatype, string}]}.
 
 %% @doc Applicaiton this reports about
