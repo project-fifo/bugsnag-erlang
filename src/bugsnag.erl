@@ -39,8 +39,7 @@ test_error() ->
 
 %% Gen server hooks
 init([ApiKey, ReleaseStage, App, AppVersion]) ->
-    {ok, HostnameS} = inet:gethostname(),
-    HostName = list_to_binary(HostnameS),
+    HostName = atom_to_binary(node(), utf8),
     {ok, #state{api_key = ApiKey, release_stage = ReleaseStage,
                 app = App, app_version = AppVersion, hostname = HostName}}.
 
@@ -74,6 +73,12 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                    _ ->
                        []
                end,
+    MessageStr = case Message of
+                     M when is_binary(M) ->
+                         M;
+                     Term ->
+                         list_to_binary(io_lib:format("~p", [Term]))
+                 end,
     Payload = [
                {apiKey, APIKey},
                {notifier, [
@@ -93,7 +98,7 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                           {exceptions, [
                                         [
                                          {errorClass, list_to_binary(io_lib:format("~p", [Reason]))},
-                                         {message, list_to_binary(io_lib:format("~p", [Message]))},
+                                         {message, MessageStr},
                                          {stacktrace, process_trace(Trace)}
                                         ]
                                        ]}
