@@ -88,7 +88,7 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                           ]},
                {events, [
                          [
-                          {payloadVersion, "2"},
+                          {payloadVersion, <<"2">>},
                           {context, HostName},
                           {releaseStage, ReleaStage},
                           {app, [
