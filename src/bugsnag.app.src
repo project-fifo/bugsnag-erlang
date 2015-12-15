@@ -1,6 +1,6 @@
 {application, bugsnag,
  [{description, "Bugsnag notifier"},
-  {vsn, git},
+  {vsn, "0.1.0"},
   {mod, { bugsnag_app, []}},
   {applications, [kernel, stdlib, inets, crypto, ssl]}
   ]}.
