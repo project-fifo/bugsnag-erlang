@@ -46,6 +46,10 @@ init([ApiKey, ReleaseStage, App, AppVersion]) ->
 handle_call(_, _, State) ->
     {reply, ok, State}.
 
+%% If no API key is defined we simply drop any exception.
+handle_cast(_, State = #state{api_key = undefined}) ->
+    {noreply, State};
+
 handle_cast({exception, Type, Reason, Message, Module, Line, Trace, Request}, State) ->
     send_exception(Type, Reason, Message, Module, Line, Trace, Request, State),
     {noreply, State};
@@ -110,7 +114,6 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
 
 process_trace(undefined) -> [];
 process_trace(Trace) ->
-    lager:debug("Processing trace ~p", [Trace]),
     process_trace(Trace, []).
 
 process_trace([], ProcessedTrace) -> ProcessedTrace;
