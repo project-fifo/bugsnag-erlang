@@ -1,7 +1,11 @@
-{application, bugsnag,
- [{description, "Bugsnag notifier"},
-  {vsn, "0.1.1"},
-  {mod, { bugsnag_app, []}},
-  {applications, [kernel, stdlib, inets, crypto, ssl]}
-  ]}.
-
+{application,bugsnag,
+             [{description,"Bugsnag notifier"},
+              {vsn,"0.1.2"},
+              {mod,{bugsnag_app,[]}},
+              {applications,[kernel,stdlib,inets,crypto,ssl]},
+              {maintainers,["Anthony Eden","Heinz N. Gies"]},
+              {licenses,["MIT"]},
+              {links,[{"Github (upstream)",
+                       "https://github.com/aeden/bugsnag-erlang"},
+                      {"Github",
+                       "https://github.com/project-fifo/bugsnag-erlang"}]}]}.
