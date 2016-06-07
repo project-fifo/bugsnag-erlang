@@ -14,19 +14,23 @@ start(_Type, _Args) ->
 
     {ok, AppVersionS} = application:get_env(bugsnag, app_version),
     AppVersion = list_to_binary(AppVersionS),
-    case application:get_env(bugsnag, error_logger) of
-        {ok, true} ->
+    ApiKey = case application:get_env(bugsnag, api_key) of
+                 {ok, ApiKeyS} ->
+                     list_to_binary(ApiKeyS);
+                 undefined ->
+                     undefined
+             end,
+    case {ApiKey, application:get_env(bugsnag, error_logger)} of
+        {undefined, _} ->
+            %% If we don't hae an API key we don't need to bother
+            %% the error logger
+            ok;
+        {_, {ok, true}} ->
             error_logger:add_report_handler(bugsnag_error_logger);
-        _ -> ok
+        _ ->
+            ok
     end,
-
-    case application:get_env(bugsnag, api_key) of
-        {ok, ApiKeyS} ->
-            ApiKey = list_to_binary(ApiKeyS),
-            bugsnag_sup:start_link(ApiKey, ReleaseState, App, AppVersion);
-        undefined ->
-            bugsnag_sup:start_link(undefined, ReleaseState, App, AppVersion)
-    end.
+    bugsnag_sup:start_link(ApiKey, ReleaseState, App, AppVersion).
 
 stop(_State) ->
     lager:info("Stopping bugsnag notifier"),
