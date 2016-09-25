@@ -44,47 +44,41 @@ handle_call({set_loglevel, Level}, State) ->
 handle_call(_Request, State) ->
     {ok, ok, State}.
 
+base(#state{api_key = ApiKey}) ->
+    bugsnag:base(ApiKey).
+
+event_base(LevelStr,
+           #state{release_stage = ReleaseStage,
+                  %% TODO: This Level is probably wrong
+                  app_version = AppVersion,
+                  hostname = HostName}) ->
+    Base = bugsnag:event_base(ReleaseStage, AppVersion, HostName),
+    Base#{
+      <<"severity">> => LevelStr
+     }.
+
 %% @private
 handle_event({log, Level, {_Date, _Time}, [LevelStr, Location, Message]},
-             #state{api_key = ApiKey, release_stage = ReleaseStage,
-                    %% TODO: This Level is probably wrong
-                    level = LogLevel, app_version = AppVersion,
-                    hostname = HostName} = State) when Level =< LogLevel ->
-    Payload = [
-               {apiKey, ApiKey},
-               {notifier, [
-                           {name, ?NOTIFIER_NAME},
-                           {version, ?NOTIFIER_VERSION},
-                           {url, ?NOTIFIER_URL}
-                          ]},
-               {events, [
-                         [
-                          {payloadVersion, "2"},
-                          {context, HostName},
-                          {severity, LevelStr},
-                          {releaseStage, ReleaseStage},
-                          {app, [
-                                 {version, AppVersion}
-                                ]},
-                          {device, [{hostname, HostName}]},
-                          {exceptions, [
-                                        [
-                                         %%{errorClass, list_to_binary(io_lib:format("~p", [Reason]))},
-                                         {message, Message},
-                                         {stacktrace, bugsnag:process_trace(Location)}
-                                        ]
-                                       ]}
-                         ]
-                        ]}
-              ],
-    bugsnag:deliver_payload(jsx:encode(Payload)),
+             %% TODO: This Level is probably wrong
+             #state{level = LogLevel} = State) when Level =< LogLevel ->
+    Base = base(State),
+    EventBase = event_base(LevelStr, State),
+    Payload =
+        Base#{
+          <<"events">> =>
+              [EventBase#{
+                 <<"exceptions">> =>
+                     [#{
+                         <<"message">> => Message,
+                         <<"stacktrace">> => bugsnag:process_trace(Location)
+                       }]}]
+         },
+    bugsnag:deliver_payload(jsone:encode(Payload)),
     {ok, State};
 
 handle_event({log, Message},
-             #state{api_key = ApiKey, release_stage = ReleaseStage,
-                    %% TODO: This Level is probably wrong
-                    level = LogLevel, app_version = AppVersion,
-                    hostname = HostName} = State) ->
+             %% TODO: This Level is probably wrong
+             #state{level = LogLevel} = State) ->
     case lager_util:is_loggable(Message, LogLevel, bugsnag) of
         true ->
             M = lager_msg:metadata(Message),
@@ -95,40 +89,37 @@ handle_event({log, Message},
                                                           ++ ".erl");
                        {F, _} -> list_to_binary(F)
                    end,
-            Base = [{apiKey, ApiKey},
-                     {notifier, [{name, ?NOTIFIER_NAME},
-                                 {version, ?NOTIFIER_VERSION},
-                                 {url, ?NOTIFIER_URL}]}],
-            EBase = [
-                     {payloadVersion, "2"},
-                     {context, HostName},
-                     {severity, LevelStr},
-                     {releaseStage, ReleaseStage},
-                     {app, [{version, AppVersion}]},
-                     {device, [{hostname, HostName}]}],
+            Base = base(State),
+            EBase = event_base(LevelStr, State),
             R = case {File, v(line, M), v(function, M)} of
                     {undefined, _, _} -> ok;
                     {_, undefined, _} -> ok;
                     {File1, Line, undefined} ->
-                        %%{errorClass, list_to_binary(io_lib:format("~p", [Reason]))},
                         {ok,
-                         EBase ++
-                             [{exceptions,
-                               [[{message, lager_msg:message(Message)},
-                                 {stacktrace, [{file, File1}, {line, Line}]}]]}]
-                        };
+                         EBase#{
+                           <<"exceptions">> =>
+                               [#{<<"message">> => lager_msg:message(Message),
+                                  <<"stacktrace">> => #{
+                                      <<"file">> => File1,
+                                      <<"line">> => Line
+                                     }}]
+                          }};
                     {File1, Line, Func} ->
                         {ok,
-                         EBase ++
-                             [{exceptions,
-                               [[{message, lager_msg:message(Message)},
-                                 {stacktrace, [{file, File1}, {line, Line},
-                                               {method, Func}]}]]}]}
+                         EBase#{
+                           <<"exceptions">> =>
+                               [#{<<"message">> => lager_msg:message(Message),
+                                  <<"stacktrace">> => #{
+                                      <<"file">> => File1,
+                                      <<"method">> => Func,
+                                      <<"line">> => Line
+                                     }}]
+                          }}
                 end,
             case R of
                 {ok, Event} ->
-                    Payload = Base ++ [{events, Event}],
-                    bugsnag:deliver_payload(jsx:encode(Payload));
+                    Payload = Base#{<<"events">> => Event},
+                    bugsnag:deliver_payload(jsone:encode(Payload));
                 _ ->
                     ok
             end,

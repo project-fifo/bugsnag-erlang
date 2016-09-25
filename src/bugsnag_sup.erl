@@ -6,6 +6,7 @@
 
 % Supervisor hooks
 -export([init/1]).
+-ignore_xref([init/1]).
 
 -define(SUPERVISOR, ?MODULE).
 

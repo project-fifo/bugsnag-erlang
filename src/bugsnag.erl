@@ -4,7 +4,7 @@
 -include("bugsnag.hrl").
 
 -export([start/0, start_link/4, notify/5, notify/7, test_error/0,
-         deliver_payload/1, process_trace/1]).
+         deliver_payload/1, process_trace/1, base/1, event_base/3]).
 
 %% Gen server hooks
 -export([
@@ -16,7 +16,39 @@
          code_change/3
         ]).
 
+-ignore_xref([
+              init/1,
+              handle_call/3,
+              handle_cast/2,
+              handle_info/2,
+              terminate/2,
+              code_change/3,
+              start/0, start_link/4, notify/5, notify/7, test_error/0,
+              deliver_payload/1, process_trace/1]).
+
 -record(state, {api_key, release_stage, app, app_version, hostname}).
+
+base(ApiKey) ->
+    #{
+      <<"apiKey">> => ApiKey,
+      <<"notifier">> => #{
+          <<"name">> => ?NOTIFIER_NAME,
+          <<"version">> => ?NOTIFIER_VERSION,
+          <<"url">> => ?NOTIFIER_URL
+         }
+     }.
+
+event_base(ReleaseStage, AppVersion, HostName) ->
+    #{
+       <<"payloadVersion">> => <<"2">>,
+       <<"context">> => HostName,
+       <<"releaseStage">> => ReleaseStage,
+       <<"app">> => #{
+           <<"version">> => AppVersion
+          },
+       <<"device">> => #{<<"hostname">> => HostName}
+     }.
+
 
 %% Public API
 start() ->
@@ -27,12 +59,14 @@ start() ->
     application:start(bugsnag).
 
 start_link(ApiKey, ReleaseStage, App, AppVersion) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [ApiKey, ReleaseStage, App, AppVersion], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE,
+                          [ApiKey, ReleaseStage, App, AppVersion], []).
 
 notify(Type, Reason, Message, Module, Line) ->
     notify(Type, Reason, Message, Module, Line, undefined, undefined).
 notify(Type, Reason, Message, Module, Line, Trace, Request) ->
-    gen_server:cast(?MODULE, {exception, Type, Reason, Message, Module, Line, Trace, Request}).
+    gen_server:cast(?MODULE, {exception, Type, Reason, Message, Module, Line,
+                              Trace, Request}).
 
 test_error() ->
     gen_server:cast(?MODULE, {test_error}).
@@ -50,7 +84,8 @@ handle_call(_, _, State) ->
 handle_cast(_, State = #state{api_key = undefined}) ->
     {noreply, State};
 
-handle_cast({exception, Type, Reason, Message, Module, Line, Trace, Request}, State) ->
+handle_cast({exception, Type, Reason, Message, Module, Line, Trace, Request},
+            State) ->
     send_exception(Type, Reason, Message, Module, Line, Trace, Request, State),
     {noreply, State};
 
@@ -69,79 +104,70 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal API
 send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
-               _State = #state{api_key = APIKey, release_stage = ReleaStage,
-                               hostname = HostName, app_version= AppVersion}) ->
-    Grouping = case application:get_application(Module) of
-                   {ok, App} ->
-                       [{groupingHash, atom_to_binary(App, utf8)}];
-                   _ ->
-                       []
-               end,
+               #state{api_key = APIKey, release_stage = ReleaseStage,
+                      hostname = HostName, app_version= AppVersion}) ->
     MessageStr = case Message of
                      M when is_binary(M) ->
                          M;
                      Term ->
                          list_to_binary(io_lib:format("~p", [Term]))
                  end,
-    Payload = [
-               {apiKey, APIKey},
-               {notifier, [
-                           {name, ?NOTIFIER_NAME},
-                           {version, ?NOTIFIER_VERSION},
-                           {url, ?NOTIFIER_URL}
-                          ]},
-               {events, [
-                         [
-                          {payloadVersion, <<"2">>},
-                          {context, HostName},
-                          {releaseStage, ReleaStage},
-                          {app, [
-                                 {version, AppVersion}
-                                ]},
-                          {device, [{hostname, HostName}]},
-                          {exceptions, [
-                                        [
-                                         {errorClass, list_to_binary(io_lib:format("~p", [Reason]))},
-                                         {message, MessageStr},
-                                         {stacktrace, process_trace(Trace)}
-                                        ]
-                                       ]}
-                         ] ++ Grouping
-                        ]}
-              ],
-    deliver_payload(jsx:encode(Payload)).
+    Base = base(APIKey),
+    EventBase0 =  event_base(ReleaseStage, AppVersion, HostName),
+    EventBase = case application:get_application(Module) of
+                    {ok, App} ->
+                        EventBase0#{<<"groupingHash">> => atom_to_binary(App, utf8)};
+                    _ ->
+                        EventBase0
+                end,
+    ErrorClass = list_to_binary(io_lib:format("~p", [Reason])),
+    Payload =
+        Base#{
+          <<"events">> =>
+              [EventBase#{
+                 <<"exceptions">> =>
+                     [#{
+                         <<"errorClass">> => ErrorClass,
+                         <<"message">> => MessageStr,
+                         <<"stacktrace">> => process_trace(Trace)
+                       }]}]
+         },
+    deliver_payload(jsone:encode(Payload)).
 
 
-process_trace(undefined) -> [];
+process_trace(undefined) ->
+    [];
 process_trace(Trace) ->
     process_trace(Trace, []).
 
-process_trace([], ProcessedTrace) -> ProcessedTrace;
+process_trace([], ProcessedTrace) ->
+    lists:reverse(ProcessedTrace);
 process_trace([Current|Rest], ProcessedTrace) ->
     StackTraceLine = case Current of
                          {_, F, _, [{file, File}, {line, Line}]} ->
-                             [
-                              {file, list_to_binary(File)},
-                              {lineNumber, Line},
-                              {method, list_to_binary(io_lib:format("~p", [F]))}
-                             ];
+                             Method = list_to_binary(io_lib:format("~p", [F])),
+                             #{<<"file">> => list_to_binary(File),
+                               <<"lineNumber">> => Line,
+                               <<"method">> => Method};
                          {_, F, _} ->
-                             [
-                              {method, list_to_binary(io_lib:format("~p", [F]))}
-                             ];
+                             Method = list_to_binary(io_lib:format("~p", [F])),
+                             #{<<"method">> => Method};
                          _ ->
-                             lager:error("Discarding stack trace line: ~p", [Current]),
+                             lager:error("Discarding stack trace line: ~p",
+                                         [Current]),
                              []
                      end,
-    process_trace(Rest, ProcessedTrace ++ [StackTraceLine]).
+    process_trace(Rest, [ StackTraceLine | ProcessedTrace]).
 
 
 deliver_payload(Payload) ->
-    lager:info("Sending exception: ~p", [Payload]),
-    case httpc:request(post, {?NOTIFY_ENDPOINT, [], "application/json", Payload}, [{timeout, 5000}], []) of
+    case httpc:request(post,
+                       {?NOTIFY_ENDPOINT, [], "application/json", Payload},
+                       [{timeout, 5000}], []) of
         {ok, {{_Version, 200, _ReasonPhrase}, _Headers, Body}} ->
             lager:debug("Error sent. Response: ~p", [Body]);
         {_, {{_Version, Status, ReasonPhrase}, _Headers, _Body}} ->
-            lager:error("Failed to send error to bugsnag (~p : ~p)", [Status, ReasonPhrase])
+            lager:error("Failed to send error to bugsnag (~p : ~p)",
+                        [Status, ReasonPhrase])
     end,
     ok.

@@ -3,7 +3,7 @@
 
 %% Application hooks
 -export([start/2, stop/1]).
-
+-ignore_xref([start/2, stop/1]).
 start(_Type, _Args) ->
     lager:info("Starting bugsnag notifier"),
     {ok, ReleaseStateS} = application:get_env(bugsnag, release_state),
