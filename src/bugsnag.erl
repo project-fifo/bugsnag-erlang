@@ -144,14 +144,17 @@ process_trace([], ProcessedTrace) ->
     lists:reverse(ProcessedTrace);
 process_trace([Current|Rest], ProcessedTrace) ->
     StackTraceLine = case Current of
-                         {_, F, _, [{file, File}, {line, Line}]} ->
-                             Method = list_to_binary(io_lib:format("~p", [F])),
+                         {M, F, As, [{file, File}, {line, Line}]} ->
                              #{<<"file">> => list_to_binary(File),
                                <<"lineNumber">> => Line,
-                               <<"method">> => Method};
-                         {_, F, _} ->
-                             Method = list_to_binary(io_lib:format("~p", [F])),
-                             #{<<"method">> => Method};
+                               <<"method">> => fma_to_binary(F, M, As)};
+                         {M, F, As, []} ->
+                             #{<<"file">> => <<(atom_to_binary(M, utf8))/binary,
+                                               ".erl">>,
+                               <<"method">> => fma_to_binary(F, M, As)};
+
+                         {M, F, As} when is_atom(M), is_atom(F), is_list(As) ->
+                             #{<<"method">> => fma_to_binary(F, M, As)};
                          _ ->
                              lager:error("Discarding stack trace line: ~p",
                                          [Current]),
@@ -159,6 +162,8 @@ process_trace([Current|Rest], ProcessedTrace) ->
                      end,
     process_trace(Rest, [ StackTraceLine | ProcessedTrace]).
 
+fma_to_binary(F, M, As) ->
+    list_to_binary(io_lib:format("~s:~s/~p", [M, F, As])).
 
 deliver_payload(Payload) ->
     case httpc:request(post,
