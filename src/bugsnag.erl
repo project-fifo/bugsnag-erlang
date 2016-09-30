@@ -110,7 +110,7 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                      M when is_binary(M) ->
                          M;
                      Term ->
-                         list_to_binary(io_lib:format("~p", [Term]))
+                         list_to_binary(io_lib:format("~P", [Term, 10]))
                  end,
     Base = base(APIKey),
     EventBase0 =  event_base(ReleaseStage, AppVersion, HostName),
@@ -120,7 +120,7 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                     _ ->
                         EventBase0
                 end,
-    ErrorClass = list_to_binary(io_lib:format("~p", [Reason])),
+    ErrorClass = list_to_binary(io_lib:format("~P", [Reason, 10])),
     Payload =
         Base#{
           <<"events">> =>
@@ -163,7 +163,7 @@ process_trace([Current|Rest], ProcessedTrace) ->
     process_trace(Rest, [ StackTraceLine | ProcessedTrace]).
 
 fma_to_binary(F, M, As) ->
-    list_to_binary(io_lib:format("~s:~s/~p", [M, F, As])).
+    list_to_binary(io_lib:format("~s:~s/~P", [M, F, As, 10])).
 
 deliver_payload(Payload) ->
     case httpc:request(post,
