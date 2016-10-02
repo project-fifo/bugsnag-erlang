@@ -13,7 +13,7 @@
 
 -record(state, {}).
 
-                                                % Callbacks
+%% Callbacks
 
 init(_InitArgs) ->
     {ok, #state{}}.
@@ -185,7 +185,7 @@ format_limit([{M, F, _}|_] = Trace) ->
     end.
 
 format_message(Fmt, Args) ->
-    IoList = io_lib:format(Fmt, Args),
+    IoList = bugsnag:format(Fmt, Args),
     Binary = iolist_to_binary(IoList),
     Binary. %% binary_to_list(Binary).
 
@@ -193,16 +193,16 @@ format_mfa({M, F, A} = MFA) ->
     if
         is_list(A) ->
             {FmtStr, Args} = format_args(A, [], []),
-            io_lib:format("~w:~w(" ++ FmtStr ++ ")", [M, F | Args]);
+            bugsnag:format("~w:~w(" ++ FmtStr ++ ")", [M, F | Args]);
         is_integer(A) ->
-            io_lib:format("~w:~w/~w", [M, F, A]);
+            bugsnag:format("~w:~w/~w", [M, F, A]);
         true ->
-            io_lib:format("~w", [MFA])
+            bugsnag:format("~w", [MFA])
     end;
 format_mfa({M, F, A, _}) ->
     format_mfa({M, F, A});
 format_mfa(Other) ->
-    io_lib:format("~w", [Other]).
+    bugsnag:format("~w", [Other]).
 
 format_offender(Offender) ->
     case proplists:get_value(mfargs, Offender) of
@@ -210,13 +210,13 @@ format_offender(Offender) ->
             %% supervisor_bridge
             Mod = proplists:get_value(mod, Offender),
             Pid = proplists:get_value(pid, Offender),
-            io_lib:format("at module ~w at ~w", [Mod, Pid]);
+            bugsnag:format("at module ~w at ~w", [Mod, Pid]);
         MFArgs ->
             %% supervisor
             MFA  = format_mfa(MFArgs),
             Name = proplists:get_value(name, Offender),
             Pid  = proplists:get_value(pid,  Offender),
-            io_lib:format("~p started with ~s at ~w", [Name, MFA, Pid])
+            bugsnag:format("~p started with ~s at ~w", [Name, MFA, Pid])
     end.
 
 format_reason({'function not exported', [{M, F, A}, MFA|_]}) ->
@@ -259,7 +259,7 @@ format_reason({badarg, [MFA, MFA2|_]}) ->
     end;
 format_reason({{badarity, {Fun, Args}}, [MFA|_]}) ->
     {arity, Arity} = lists:keyfind(arity, 1, erlang:fun_info(Fun)),
-    [io_lib:format("fun called with wrong arity of ~w instead of ~w in ",
+    [bugsnag:format("fun called with wrong arity of ~w instead of ~w in ",
                    [length(Args), Arity]),
      format_mfa(MFA)];
 format_reason({noproc, MFA}) ->
@@ -281,7 +281,7 @@ format_reason(Reason) ->
     format_term(Reason).
 
 format_term(Term) ->
-    lists:flatten(io_lib:format("~P", [Term, 10])).
+    lists:flatten(bugsnag:format("~p", [Term])).
 
 %% Misc
 

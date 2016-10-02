@@ -8,7 +8,7 @@
 
 -record(state, {
           api_key, release_stage, app, app_version, hostname,
-          level
+          level, client_version, dropped = 0
          }).
 
 -include_lib("lager/include/lager.hrl").
@@ -22,9 +22,10 @@ init([ApiKeyS, ReleaseStageS, AppS, AppVersionS, Level]) ->
 
     {ok, HostnameS} = inet:gethostname(),
     HostName = list_to_binary(HostnameS),
-
+    {ok, V} = application:get_key(bugsnag, vsn),
     {ok, #state{api_key = ApiKey, release_stage = ReleaseStage,
                 level = lager_util:config_to_mask(Level),
+                client_version = list_to_binary(V),
                 app = App, app_version = AppVersion, hostname = HostName}}.
 
 
@@ -44,8 +45,8 @@ handle_call({set_loglevel, Level}, State) ->
 handle_call(_Request, State) ->
     {ok, ok, State}.
 
-base(#state{api_key = ApiKey}) ->
-    bugsnag:base(ApiKey).
+base(#state{api_key = ApiKey, client_version = Vsn}) ->
+    bugsnag:base(ApiKey, Vsn).
 
 event_base(LevelStr,
            #state{release_stage = ReleaseStage,
@@ -79,8 +80,13 @@ handle_event({log, Level, {_Date, _Time}, [LevelStr, Location, Message]},
 handle_event({log, Message},
              %% TODO: This Level is probably wrong
              #state{level = LogLevel} = State) ->
-    case lager_util:is_loggable(Message, LogLevel, bugsnag) of
-        true ->
+    case {lager_util:is_loggable(Message, LogLevel, bugsnag),
+          erlang:process_info(self(), message_queue_len)} of
+        {_, {message_queue_len, N}} when N > 100 ->
+            %% If the message queue is larger then 100 we'll start dropping
+            %% messages, to make sure we don't overload
+            {ok, State#state{dropped = State#state.dropped + 1}};
+        {true, _} ->
             M = lager_msg:metadata(Message),
             LevelStr = atom_to_binary(lager_msg:severity(Message), utf8),
             File = case {v(file, M), v(module, M)} of
@@ -124,7 +130,7 @@ handle_event({log, Message},
                     ok
             end,
             {ok, State};
-        false ->
+        _ ->
             {ok, State}
     end;
 

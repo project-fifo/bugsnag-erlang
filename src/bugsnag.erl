@@ -4,7 +4,8 @@
 -include("bugsnag.hrl").
 
 -export([start/0, start_link/4, notify/5, notify/7, test_error/0,
-         deliver_payload/1, process_trace/1, base/1, event_base/3]).
+         format/2,
+         deliver_payload/1, process_trace/1, base/2, event_base/3]).
 
 %% Gen server hooks
 -export([
@@ -26,14 +27,20 @@
               start/0, start_link/4, notify/5, notify/7, test_error/0,
               deliver_payload/1, process_trace/1]).
 
--record(state, {api_key, release_stage, app, app_version, hostname}).
+-record(state, {
+          api_key,
+          release_stage,
+          app,
+          app_version,
+          client_version,
+          hostname}).
 
-base(ApiKey) ->
+base(ApiKey, Vsn) ->
     #{
       <<"apiKey">> => ApiKey,
       <<"notifier">> => #{
           <<"name">> => ?NOTIFIER_NAME,
-          <<"version">> => ?NOTIFIER_VERSION,
+          <<"version">> => Vsn,
           <<"url">> => ?NOTIFIER_URL
          }
      }.
@@ -65,16 +72,26 @@ start_link(ApiKey, ReleaseStage, App, AppVersion) ->
 notify(Type, Reason, Message, Module, Line) ->
     notify(Type, Reason, Message, Module, Line, undefined, undefined).
 notify(Type, Reason, Message, Module, Line, Trace, Request) ->
-    gen_server:cast(?MODULE, {exception, Type, Reason, Message, Module, Line,
-                              Trace, Request}).
+    case erlang:process_info(whereis(?MODULE), message_queue_len) of
+        {message_queue_len, N} when N > 100 ->
+            %% if we got more then 100 messages queued up we simply
+            %% stop writing
+            ok;
+        _ ->
+            gen_server:cast(
+              ?MODULE, {exception, Type, Reason, Message, Module, Line,
+                        Trace, Request})
+    end.
 
 test_error() ->
     gen_server:cast(?MODULE, {test_error}).
 
 %% Gen server hooks
 init([ApiKey, ReleaseStage, App, AppVersion]) ->
+    {ok, V} = application:get_key(bugsnag, vsn),
     HostName = atom_to_binary(node(), utf8),
     {ok, #state{api_key = ApiKey, release_stage = ReleaseStage,
+                client_version = list_to_binary(V),
                 app = App, app_version = AppVersion, hostname = HostName}}.
 
 handle_call(_, _, State) ->
@@ -102,17 +119,21 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+format(Term, Args) ->
+    lager_format:format(Term, Args, ?FORMAT_LENGHT).
+
 %% Internal API
 send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                #state{api_key = APIKey, release_stage = ReleaseStage,
+                      client_version = ClientVersion,
                       hostname = HostName, app_version= AppVersion}) ->
     MessageStr = case Message of
                      M when is_binary(M) ->
                          M;
                      Term ->
-                         list_to_binary(io_lib:format("~P", [Term, 10]))
+                         list_to_binary(format("~p", [Term]))
                  end,
-    Base = base(APIKey),
+    Base = base(APIKey, ClientVersion),
     EventBase0 =  event_base(ReleaseStage, AppVersion, HostName),
     EventBase = case application:get_application(Module) of
                     {ok, App} ->
@@ -120,7 +141,7 @@ send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
                     _ ->
                         EventBase0
                 end,
-    ErrorClass = list_to_binary(io_lib:format("~P", [Reason, 10])),
+    ErrorClass = list_to_binary(format("~p", [Reason])),
     Payload =
         Base#{
           <<"events">> =>
@@ -163,7 +184,7 @@ process_trace([Current|Rest], ProcessedTrace) ->
     process_trace(Rest, [ StackTraceLine | ProcessedTrace]).
 
 fma_to_binary(F, M, As) ->
-    list_to_binary(io_lib:format("~s:~s/~P", [M, F, As, 10])).
+    list_to_binary(format("~s:~s/~p", [M, F, As])).
 
 deliver_payload(Payload) ->
     case httpc:request(post,
