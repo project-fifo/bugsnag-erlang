@@ -1,6 +1,6 @@
 {application,bugsnag,
              [{description,"Bugsnag notifier"},
-              {vsn,"1.1.3"},
+              {vsn,"1.1.4"},
               {pkg_name,bugsnag_erl},
               {mod,{bugsnag_app,[]}},
               {applications,[kernel,stdlib,inets,crypto,ssl,lager,jsone]},
