@@ -70,7 +70,8 @@ start_link(ApiKey, ReleaseStage, App, AppVersion) ->
                           [ApiKey, ReleaseStage, App, AppVersion], []).
 
 notify(Type, Reason, Message, Module, Line) ->
-    notify(Type, Reason, Message, Module, Line, undefined, undefined).
+    notify(Type, Reason, Message, Module, Line, generate_trace(), undefined).
+
 notify(Type, Reason, Message, Module, Line, Trace, Request) ->
     case erlang:process_info(whereis(?MODULE), message_queue_len) of
         {message_queue_len, N} when N > 100 ->
@@ -121,6 +122,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 format(Term, Args) ->
     lager_format:format(Term, Args, ?FORMAT_LENGHT).
+
 
 %% Internal API
 send_exception(_Type, Reason, Message, Module, _Line, Trace, _Request,
@@ -197,3 +199,10 @@ deliver_payload(Payload) ->
                         [Status, ReasonPhrase])
     end,
     ok.
+
+generate_trace() ->
+  lager:info("Generating trace"),
+  try
+    throw(bugsnag_gen_trace)
+  catch bugsnag_gen_trace -> erlang:get_stacktrace()
+  end.
